@@ -1,0 +1,4 @@
+timestamp	case	input_summary	artifacts	reviewer_verdict	rounds	status	note
+2026-07-22T13:30:00+08:00	evolution	v1.2.0→v1.3.0	-	-	-	applied	Darwin进化优化：策略A补缺陷(gap1/2/3)+归并(gap4/5/6)
+2026-07-22T11:50:00+08:00	evolution	v1.1.0→v1.2.0	-	-	-	applied	深度审计修复：P0硬编码路径+P1测试/pyproject+P2编码/父目录
+2026-07-22T15:29:00+08:00	script_test	test_aris_audit.py 实跑	scripts/test_aris_audit.py	-	1	applied	真实运行：8/8 passed（含 drift 类型B 弱声明被强化、P1-1 标题后声明检测），零依赖纯标准库；此为脚本回归测试真实证据，与人类实测 T1/T2 无关（T1/T2 仍待实测）

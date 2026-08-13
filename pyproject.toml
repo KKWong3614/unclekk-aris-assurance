@@ -1,0 +1,6 @@
+[project]
+name = "unclekk-aris-assurance"
+version = "1.4.0"
+description = "ARIS 对抗式声明审计 · 前置自审脚本（light 模式，零依赖纯标准库）"
+requires-python = ">=3.8"
+dependencies = []
