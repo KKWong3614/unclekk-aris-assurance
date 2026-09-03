@@ -1,5 +1,32 @@
 # unclekk-aris-assurance 演进日志
 
+## v1.6.0 — 2026-09-03 · 重点提升 Reliability（原评测 4.2 → 目标 4.7+）
+
+针对 TRACE 评测 R·Reliability 三子项弱项深挖（棘轮：错误处理/格式识别/稳定性增强，非评分优化）。
+
+| 项 | 内容 |
+|----|------|
+| 异常处理 4.0→4.7 | 新增 `AuditError` 体系：错误码 + 退出码分级(2/3/4/7/10) + 一行修复提示；覆盖目录/二进制/空/超大文件边界，不再直接崩 |
+| 功能完善性 4.3→4.6 | 修复表格单元格/加粗声明漏检；新增 `--json` / `--mark` / `--threshold` / `--max-bytes` 选项 |
+| 运行稳定性 4.3→4.7 | `read_doc` 默认 5MB 上限 + 超长行截断，防卡死/正则灾难 |
+| 测试 | 回归测试 10 → 18 项全过（表格单元格/加粗/`--json`/目录·二进制·空·超大/退出码/`--mark`） |
+
+**棘轮机制**：本轮为 Reliability 专项增强，无 Darwin 基线变化；版本 1.5.0 → 1.6.0，SKILL.md / pyproject.toml / _meta.json / README.md / CHANGELOG.md / 本日志六处一致。
+
+## v1.5.0 — 2026-09-03 · 评测驱动优化（TRACE 4.6/5 · 优秀）
+
+基于 SkillHub TRACE 评测报告与平台 skill 规则，针对性改进（棘轮：功能增强 + 文档纠偏，非评分优化）。
+
+| 项 | 内容 |
+|----|------|
+| 硬代码保障 | 新增 `aris_audit.py gate` 子命令：收口前扫台账，未闭环即非零退出，机制性阻止带缺口发稿；接入 CK-4.4 与 Runbook |
+| 新手友好 | 脚本报错改为带修复指引（检查路径 / 绝对路径 / 另存 UTF-8）；新增「受众」「自动触发条件」「步数限制与兜底」三节 |
+| 实测补强 | 新增 `references/quickstart-minimal-example.md`（自带 example-*.md 实跑，输出为真实产物）/ `sample-claim-audit-report.md` / `faq.md`（坑点对照） |
+| 文档纠偏 | 补齐缺失 `LICENSE`；重写 README（版本 1.5.0、目录结构与真实文件一致）；`CHANGELOG.md` 由孤儿桩升级为权威变更记录 |
+| 测试 | 回归测试 8 → 10 项全过（新增 gate 通过 / 未闭环） |
+
+**棘轮机制**：本轮为评测驱动优化（非评分优化），无 Darwin 基线变化；版本 1.4.0 → 1.5.0，SKILL.md / pyproject.toml / _meta.json / 本日志四处一致。
+
 ## v1.4.0 — 2026-07-25
 
 ### 第 3 点落地：持久化 research wiki + 自改进循环
