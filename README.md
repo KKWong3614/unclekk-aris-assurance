@@ -41,8 +41,8 @@ unclekk-aris-assurance/
 ├── pyproject.toml                    # 分发元数据
 ├── _meta.json                        # 平台元数据（含 version）
 ├── scripts/
-│   ├── aris_audit.py                 # 前置自审脚本（extract / drift / gate 三子命令）
-│   └── test_aris_audit.py            # 回归测试（18/18 passed）
+│   ├── aris_audit.py                 # 前置自审脚本（extract / drift / gate / reconcile 四子命令）
+│   └── test_aris_audit.py            # 回归测试（23/23 passed）
 └── references/
     ├── README.md                     # 本目录说明与文件清单
     ├── evolution-log.md              # 技能演进历史与决策记录
@@ -72,11 +72,11 @@ See `references/quickstart-minimal-example.md` for the full walkthrough with rea
 
 ## 版本 Version
 
-当前版本：`1.6.0`
-Current version: `1.6.0`
+当前版本：`2.0.0`
+Current version: `2.0.0`
 
-> v1.6.0 重点提升 Reliability：统一错误码+退出码分级（2/3/4/7/10）、表格/加粗声明识别、`--json`/`--mark`/`--threshold`/`--max-bytes` 选项、5MB 大文件保护。回归测试 16/16 全过。
-> v1.6.0 focuses on Reliability: unified error codes + exit-code tiers (2/3/4/7/10), table/bold claim recognition, `--json`/`--mark`/`--threshold`/`--max-bytes` options, 5MB file-size guard. 16/16 regression tests pass.
+> v2.0.0 重大更新：新增 `reconcile` 子命令（跨文档证据核验 · stage4 异族证据兜底）+ 声明严重度分级 P0/P1/P2（量化无证据>P0、强绝对无证据>P1）。搭配 v1.5.0/v1.6.0 的统一错误码+退出码分级、表格/加粗声明识别、5MB 大文件保护，回归测试 23/23 全过。
+> v2.0.0 major update: new `reconcile` subcommand (cross-document evidence check · out-group evidence backstop) + claim severity tiers P0/P1/P2 (quantitative-without-evidence>P0, strong-absolute-without-evidence>P1). With v1.5.0/v1.6.0 error-code + exit-code tiers, table/bold claim recognition, 5MB guard. 23/23 regression tests pass.
 
 ## 许可证 License
 
