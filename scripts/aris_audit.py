@@ -7,6 +7,7 @@ aris_audit.py — ARIS 对抗式声明审计 · 前置自审脚本（light 模�
   extract  阶段2：喂草稿.md -> 生成 Claim Ledger 台账骨架（证据列留空标 ⚠️，可用 --mark 自定义）
   drift    阶段3：喂成稿 + ledger.md -> 输出漂移清单（成稿有台账无 / 弱声明被强化）
   gate     收口闸门：台账仍有未验证声明 -> 退出码 10，禁止 Finish（严格闭环硬保障）
+  reconcile 2.0.0 新增：喂草稿 + 来源文档 -> 跨文档证据核验，输出来源覆盖率与不支持声明（按严重度 P0/P1/P2 排序）
 
 设计约束：
   - 零交互：所有选项走 flag，无 input() 询问
@@ -175,6 +176,23 @@ WEAK_MARKERS = ["弱", "⚠️", "❌", "无", "缺", "未", "待补", "不足",
 
 NUM_RE = re.compile(r"\d")
 
+# 严重度分级（2.0.0 新增）：未验证声明的证据风险档位
+SEV_P0 = "P0"  # 量化声明（含数字/百分比/倍数）无证据 —— 最高风险，最易被"看似成立"
+SEV_P1 = "P1"  # 强绝对声明（证明/必然/所有/一定/完全…）无证据 —— 高风险
+SEV_P2 = "P2"  # 其他未验证声明 —— 中低风险
+SEV_ORDER = {SEV_P0: 0, SEV_P1: 1, SEV_P2: 2}
+STRONG_ABSOLUTE = ["证明", "必然", "一定", "所有", "都", "完全", "彻底", "毫无",
+                   "绝对", "确保", "必须", "没有任何", "不可能", "毫无例外", "稳赢"]
+
+
+def severity_of(sent):
+    """未验证声明的严重度：量化无证据>P0，强绝对无证据>P1，其余>P2。"""
+    if NUM_RE.search(sent) and not any(w in sent for w in WEAK_MARKERS):
+        return SEV_P0
+    if any(m in sent for m in STRONG_ABSOLUTE):
+        return SEV_P1
+    return SEV_P2
+
 
 def is_candidate_claim(sent):
     if len(sent) < 8:
@@ -222,7 +240,8 @@ def cmd_extract(args):
     mark = args.mark
 
     if args.json:
-        data = [{"id": f"C{i}", "claim": c, "evidence": "", "strength": "待评", "gap": ""}
+        data = [{"id": f"C{i}", "claim": c, "evidence": "", "strength": "待评",
+                 "gap": "", "severity": severity_of(c)}
                 for i, c in enumerate(claims, 1)]
         out = json.dumps(data, ensure_ascii=False, indent=2)
         print(out)
@@ -392,19 +411,129 @@ def cmd_gate(args):
     open_rows = [r for r in ledger if not _row_closed(r, args.mark)]
     if open_rows:
         ids = ", ".join(r["id"] for r in open_rows)
+        # 按严重度排序，优先暴露最高风险（P0>P1>P2）
+        ranked = sorted(open_rows, key=lambda r: SEV_ORDER.get(severity_of(r["claim"]), 9))
+        sev_counts = {SEV_P0: 0, SEV_P1: 0, SEV_P2: 0}
+        for r in ranked:
+            sev_counts[severity_of(r["claim"])] += 1
+        sev_line = (f"严重度分布：P0(量化无证据)={sev_counts[SEV_P0]} · "
+                    f"P1(强绝对无证据)={sev_counts[SEV_P1]} · P2(其他)={sev_counts[SEV_P2]}")
         print(
             f"[aris_audit] ❌ 审计未闭环（gate FAILED · 退出码 10）："
             f"台账中仍有 {len(open_rows)} 条声明缺少证据（{ids}）。\n"
-            f"    请对每条三选一后重试：\n"
+            f"    {sev_line}\n"
+            f"    请对每条三选一后重试（优先处理 P0/P1）：\n"
             f"      1) 补证据：在「证据来源」列填入 文件:行号 或 截图路径\n"
             f"      2) 降级措辞：把「支撑强度」改为「弱」，并在「缺口」列写「已降级：…」\n"
             f"      3) 删除：直接从成稿中移除该声明\n"
-            f"    仍不确定？运行 `python scripts/aris_audit.py drift --draft 成稿.md --ledger {args.ledger}` 复核成稿与台账是否一致。",
+            f"    仍不确定？运行 `python scripts/aris_audit.py drift --draft 成稿.md --ledger {args.ledger}` 复核成稿与台账是否一致；"
+            f"或运行 `python scripts/aris_audit.py reconcile --draft 成稿.md --source 来源1.md [来源2.md]` 做跨文档证据核验。",
             file=sys.stderr,
         )
         sys.exit(10)
     print(f"[aris_audit] ✅ 审计闭环校验通过（gate PASSED）："
           f"台账 {len(ledger)} 条声明均已验证或已显式降级/删除，可以收口。")
+
+
+# ---------- reconcile（2.0.0 新增 · 跨文档证据交叉验证） ----------
+def cmd_reconcile(args):
+    """跨文档证据核验：草稿声明 vs 来源文档，输出每条声明的来源覆盖率与不支持声明。
+
+    覆盖度用声明与来源句子的 token Jaccard 相似度衡量（light 模式，零依赖、不联网）。
+    这是 extract/drift/gate 三阶段之外的「异族证据兜底」：即便台账自审通过，仍可能漏掉"无来源支撑"的断言，
+    reconcile 专门抓这一类 —— 直接服务技能核心使命"抓看似成立但证据不足的结论"。
+    """
+    try:
+        draft_text = read_doc(args.draft, args.max_bytes)
+        src_texts = []
+        for sp in args.source:
+            src_texts.append(read_doc(sp, args.max_bytes))
+    except AuditError as e:
+        _die(e)
+
+    claims = [s for s in split_sentences(draft_text) if is_candidate_claim(s)]
+
+    # 来源证据句池：来源中长度足够的句子
+    evid_pool = []
+    for src in src_texts:
+        for s in split_sentences(src):
+            if len(s) >= 6:
+                evid_pool.append(s)
+    evid_tokens = [(s, tokenize(s)) for s in evid_pool]
+
+    results = []
+    supported = 0
+    for c in claims:
+        ct = tokenize(c)
+        best, best_src = 0.0, None
+        for s, st in evid_tokens:
+            if not st or not ct:
+                continue
+            sc = jaccard(ct, st)
+            if sc > best:
+                best, best_src = sc, s
+        ok = best >= args.threshold
+        if ok:
+            supported += 1
+        results.append({
+            "claim": c,
+            "severity": "OK" if ok else severity_of(c),
+            "coverage": round(best, 3),
+            "supported": ok,
+            "best_source": best_src,
+        })
+
+    coverage_pct = (supported / len(claims) * 100) if claims else 0.0
+    unsupported = [r for r in results if not r["supported"]]
+    sev_counts = {SEV_P0: 0, SEV_P1: 0, SEV_P2: 0}
+    for r in unsupported:
+        sev_counts[r["severity"]] += 1
+
+    if args.json:
+        data = {
+            "source_files": list(args.source),
+            "draft_claims": len(claims),
+            "source_sentences": len(evid_pool),
+            "coverage_pct": round(coverage_pct, 1),
+            "supported": supported,
+            "unsupported": len(unsupported),
+            "severity_of_unsupported": sev_counts,
+            "items": results,
+        }
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+        return
+
+    out = []
+    out.append("# 跨文档证据核验报告（由 aris_audit reconcile 生成 · stage4 异族证据兜底）")
+    out.append("")
+    out.append(f"> 扫描草稿声明 {len(claims)} 条，来源文档 {len(args.source)} 个（证据句 {len(evid_pool)} 句）。"
+               f"来源覆盖率 **{coverage_pct:.1f}%**（{supported}/{len(claims)}）。"
+               f"以下 {len(unsupported)} 条声明在来源中缺乏支撑，按严重度优先处理。")
+    out.append("")
+    if unsupported:
+        out.append(f"## 缺来源支撑的声明（P0={sev_counts[SEV_P0]} · P1={sev_counts[SEV_P1]} · P2={sev_counts[SEV_P2]}）")
+        out.append("")
+        for r in sorted(unsupported, key=lambda x: SEV_ORDER.get(x["severity"], 9)):
+            out.append(f"- `{r['severity']}` 覆盖{best_src_disp(r['coverage'])} ⚠️ {r['claim']}")
+    else:
+        out.append("- 无（所有草稿声明均能在来源文档中找到支撑）")
+    out.append("")
+    out.append("> 说明：覆盖度 = 声明与来源句子的 token Jaccard 相似度（阈值 "
+               + str(args.threshold) + "）。相似度低仅提示「来源中可能无直接支撑」，"
+               "不证明为假；最终以人工/异族审为准。本工具不替代 Hermes+SenseNova 异族审。")
+    out.append("")
+    result = "\n".join(out)
+    if args.output:
+        out_path = Path(args.output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(result, encoding="utf-8")
+        print(f"[aris_audit] 已生成跨文档核验报告 -> {args.output}（覆盖率 {coverage_pct:.1f}%）")
+    else:
+        print(result)
+
+
+def best_src_disp(coverage):
+    return f"{coverage:.2f}"
 
 
 # ---------- CLI ----------
@@ -443,6 +572,20 @@ def build_parser():
     pg.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES,
                     help=f"文件大小上限（字节），默认 {DEFAULT_MAX_BYTES}（5MB）")
     pg.set_defaults(func=cmd_gate)
+
+    pr = sub.add_parser(
+        "reconcile",
+        help="跨文档证据核验：草稿声明 vs 来源文档，输出来源覆盖率与不支持声明（按严重度 P0/P1/P2 排序）")
+    pr.add_argument("--draft", required=True, help="待核验草稿/成稿 markdown 路径")
+    pr.add_argument("--source", required=True, nargs="+",
+                    help="来源文档路径，可传多个（空格分隔），如 --source 论文.pdf.md 数据.csv.md")
+    pr.add_argument("--output", help="输出核验报告路径（默认打印到 stdout）")
+    pr.add_argument("--json", action="store_true", help="输出 JSON 对象，便于程序/CI 消费")
+    pr.add_argument("--threshold", type=float, default=0.3,
+                    help="声明与来源句子的 Jaccard 相似度阈值，默认 0.3（达到即视为有来源支撑）")
+    pr.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES,
+                    help=f"文件大小上限（字节），默认 {DEFAULT_MAX_BYTES}（5MB）")
+    pr.set_defaults(func=cmd_reconcile)
     return p
 
 
