@@ -238,6 +238,81 @@ def test_mark_custom():
         assert r2.returncode == 10, f"自定义标记应判未闭环(10)，实际 {r2.returncode}"
         print("  [PASS] --mark 自定义标记 extract/gate 共用")
 
+def test_severity_in_extract_json():
+    """2.0.0: extract --json 每条声明带 severity（量化=P0 / 强绝对=P1 / 其他=P2）"""
+    with tempfile.TemporaryDirectory() as td:
+        draft = Path(td) / "draft.md"
+        draft.write_text(
+            "本模型准确率达 92%。\n这证明所有模型必然失败。\n该方法效果较好。\n",
+            encoding="utf-8")
+        r = run(["extract", "--draft", str(draft), "--json"])
+        assert r.returncode == 0, r.stderr
+        data = json.loads(r.stdout)
+        sev = {d["claim"]: d["severity"] for d in data}
+        assert sev["本模型准确率达 92%。"] == "P0", "量化声明应 P0"
+        assert sev["这证明所有模型必然失败。"] == "P1", "强绝对声明应 P1"
+        assert sev["该方法效果较好。"] == "P2", "其他应 P2"
+        print("  [PASS] extract --json 带 severity 分级")
+
+def test_reconcile_supported():
+    """2.0.0: 草稿声明在来源中有支撑 -> supported=True，覆盖率抬升"""
+    with tempfile.TemporaryDirectory() as td:
+        draft = Path(td) / "draft.md"
+        src = Path(td) / "src.md"
+        draft.write_text("本模型准确率达到 96.3%。\n", encoding="utf-8")
+        src.write_text("实验显示模型准确率为 96.3%。\n", encoding="utf-8")
+        r = run(["reconcile", "--draft", str(draft), "--source", str(src), "--json"])
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["supported"] >= 1
+        assert d["items"][0]["supported"] is True
+        assert d["coverage_pct"] >= 50.0, "有支撑声明应抬升覆盖率"
+        print("  [PASS] reconcile 识别有来源支撑的声明")
+
+def test_reconcile_unsupported():
+    """2.0.0: 草稿声明无来源支撑 -> unsupported，严重度非 OK"""
+    with tempfile.TemporaryDirectory() as td:
+        draft = Path(td) / "draft.md"
+        src = Path(td) / "src.md"
+        draft.write_text("这证明所有深度学习模型必然过拟合。\n", encoding="utf-8")
+        src.write_text("今天天气不错。\n", encoding="utf-8")
+        r = run(["reconcile", "--draft", str(draft), "--source", str(src), "--json"])
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["unsupported"] >= 1
+        assert d["items"][0]["supported"] is False
+        assert d["items"][0]["severity"] == "P1", "强绝对无证据应 P1"
+        assert d["severity_of_unsupported"]["P1"] >= 1
+        print("  [PASS] reconcile 识别无来源支撑声明并按严重度分级")
+
+def test_reconcile_markdown_report():
+    """2.0.0: reconcile 默认输出 markdown 报告，含覆盖率与严重度分布"""
+    with tempfile.TemporaryDirectory() as td:
+        draft = Path(td) / "draft.md"
+        src = Path(td) / "src.md"
+        draft.write_text("本模型准确率达到 96.3%。\n这证明所有模型必然失败。\n", encoding="utf-8")
+        src.write_text("实验显示模型准确率为 96.3%。\n", encoding="utf-8")
+        r = run(["reconcile", "--draft", str(draft), "--source", str(src)])
+        assert r.returncode == 0, r.stderr
+        assert "覆盖率" in r.stdout, "报告应含覆盖率"
+        assert "P1" in r.stdout, "报告应含严重度分布"
+        print("  [PASS] reconcile 输出 markdown 核验报告")
+
+def test_gate_reports_severity():
+    """2.0.0: gate 未闭环时 stderr 含严重度分布（P0/P1/P2）"""
+    with tempfile.TemporaryDirectory() as td:
+        ledger = Path(td) / "ledger.md"
+        ledger.write_text(
+            "| # | 声明 | 证据 | 强度 | 缺口 |\n"
+            "|---|---|---|---|---|\n"
+            "| C1 | 本模型准确率达 92% | ⚠️ | 待评 | ⚠️ |\n"
+            "| C2 | 这证明所有模型必然失败 | ⚠️ | 待评 | ⚠️ |\n",
+            encoding="utf-8")
+        r = run(["gate", "--ledger", str(ledger)])
+        assert r.returncode == 10, r.returncode
+        assert "P0" in (r.stdout + r.stderr) and "P1" in (r.stdout + r.stderr), "gate 应报告严重度"
+        print("  [PASS] gate 输出含严重度分布")
+
 if __name__ == "__main__":
     tests = [
         test_extract_produces_ledger,
@@ -258,6 +333,11 @@ if __name__ == "__main__":
         test_empty_fails,
         test_too_large_fails,
         test_mark_custom,
+        test_severity_in_extract_json,
+        test_reconcile_supported,
+        test_reconcile_unsupported,
+        test_reconcile_markdown_report,
+        test_gate_reports_severity,
     ]
     passed = 0
     for t in tests:
