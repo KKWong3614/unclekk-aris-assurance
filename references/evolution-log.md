@@ -1,5 +1,17 @@
 # unclekk-aris-assurance 演进日志
 
+## v2.0.0 — 2026-09-04 · 重大更新：跨文档证据核验 + 声明严重度分级
+
+针对"即便台账自审通过，仍可能漏掉无来源支撑断言"这一盲区，新增 stage4 异族证据兜底能力（棘轮：功能增强，非评分优化）。
+
+| 项 | 内容 |
+|----|------|
+| 跨文档证据核验 | 新增 `reconcile` 子命令：`--draft 成稿 --source 来源1 来源2…`，草稿声明与来源文档逐句做 token Jaccard 覆盖度核验，输出来源覆盖率 + 无来源支撑声明清单；零依赖、不联网、纯规则启发式 |
+| 声明严重度分级 | `P0` 量化无证据 / `P1` 强绝对无证据 / `P2` 其他；`extract --json` 带 severity，`gate` 输出严重度分布并优先暴露 P0/P1，`reconcile` 按严重度排序 |
+| 测试 | 回归测试 18 → 23 项全过（reconcile 有/无来源支撑分检 + JSON 结构 + markdown 报告 + 严重度分级 × extract/gate） |
+
+**棘轮机制**：本轮为功能增强（非评分优化），无 Darwin 基线变化；版本 1.6.0 → 2.0.0，SKILL.md / _meta.json / pyproject.toml / README.md / CHANGELOG.md / 本日志七处一致。
+
 ## v1.6.0 — 2026-09-03 · 重点提升 Reliability（原评测 4.2 → 目标 4.7+）
 
 针对 TRACE 评测 R·Reliability 三子项弱项深挖（棘轮：错误处理/格式识别/稳定性增强，非评分优化）。
