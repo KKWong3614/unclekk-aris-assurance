@@ -3,6 +3,13 @@
 > 权威版本变更记录（SKILL.md 内仅保留最近两版摘要，详见本文件）。
 > Authoritative changelog (SKILL.md keeps only a 2-version summary; see this file for the full history).
 
+## [2.0.0] - 2026-09-04 · 重大更新：跨文档证据核验 + 声明严重度分级
+
+- **新增 `reconcile` 子命令（stage4 异族证据兜底）**：`reconcile --draft 成稿.md --source 论文.md 数据.csv.md` 把草稿声明与来源文档逐句做 token Jaccard 覆盖度核验，输出来源覆盖率与"无来源支撑声明"清单。直接补上 extract/drift/gate 三阶段漏掉的"无来源支撑断言"这一类，强化技能核心使命"抓看似成立但证据不足的结论"。零依赖、不联网、纯规则启发式。
+- **声明严重度分级 P0/P1/P2**：未验证声明按风险分档——`P0` 量化声明（含数字/百分比/倍数）无证据（最高风险）、`P1` 强绝对声明（证明/必然/所有/一定/完全）无证据（高风险）、`P2` 其他（中低风险）。`extract --json` 每条带 `severity`；`gate` 未闭环时 stderr 输出严重度分布并优先暴露 P0/P1；`reconcile` 不支持声明按严重度排序。
+- **测试**：回归测试 18 → **23 项全过**（新增 `reconcile` 有/无来源支撑分检、`reconcile --json` 结构、`reconcile` markdown 报告、`extract --json` 严重度分级、`gate` 严重度分布）。
+- 版本 1.6.0 → 2.0.0（SKILL.md / _meta.json / pyproject.toml / README.md / CHANGELOG.md / evolution-log 七处一致）。
+
 ## [1.6.0] - 2026-09-03 · 重点提升 Reliability（原评测 4.2 → 目标 4.7+）
 
 针对 SkillHub TRACE 评测 R·Reliability 三个子项弱项（异常处理 4.0 / 功能完善性 4.3 / 运行稳定性 4.3）深挖：
